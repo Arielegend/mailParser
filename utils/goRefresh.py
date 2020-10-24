@@ -1,10 +1,9 @@
 import email
 import imaplib
 import re
-from imap_tools import MailBox, AND
-from utils import shippment
+# from imap_tools import MailBox, AND
+from utils import s3_transfer
 from termcolor import colored
-
 
 def BelongTo_OpnBokOnbRecDly(headers):
     opn = "OPN" in headers['subject'] or "opn" in headers['subject']
@@ -31,8 +30,22 @@ def getHeaders(email_msg2_forHeaders):
     return headers
 
 
+def checkForLink(email_msg):
+    pattern1_link = 'Link\sto\sShipment\sDocuments\s*<(.*)>'
+
+    linkHelper = re.findall(pattern1_link, email_msg.as_string())
+    if len(linkHelper) > 0:
+        link = linkHelper[0]
+        msg = 'this is link' + link
+        return True, link
+
+    else:
+        return False, '-1'
+
+
 def BelongTo_DrishaHatara(headers, email_msg):
-    return '1'
+    LinkExist, link = checkForLink(email_msg)
+    return LinkExist, link
 
 
 def classifyMaiL(email_msg, email_msg2_forHeaders):
@@ -41,18 +54,20 @@ def classifyMaiL(email_msg, email_msg2_forHeaders):
 
     part1 = BelongTo_OpnBokOnbRecDly(headers)  # (number, opn, bok, onb, rec, dly) as booleans
     part2 = BelongTo_PreNotice(headers, email_msg)  # (number, Pre, Notice)
-    # isItPart3 = BelongTo_DrishaHatara(headers, email_msg)    # ()
+    part3 = BelongTo_DrishaHatara(headers, email_msg)    # (boolean, link/'-1')
 
     classifiedMail = None
-    if part1[0] + part2[0] == 1:
+    if part1[0] + part2[0] + part3[0] == 1:
         if part1[0] == 1:
             sho = getSHO_Part1(email_msg, headers)
             if sho:
                 classifiedMail = {"part": 'PART1', 'action': part1, 'sho': sho}
         elif part2[0] == 1:
             classifiedMail = {"part": 'PART2', 'action': part2}
+        elif part3[0] == 1:
+            classifiedMail = {"part": 'PART3', 'action': part3}
     else:
-        print("action isnt 1.. -> ", headers)
+        print("action isnt 1.. -> ")
 
     return classifiedMail
 
@@ -255,6 +270,111 @@ def getAction_Part1(email_msg, headers, classifiedMaiL):
     return action
 
 
+def getSho_Pre(email_msg):
+    pattern1_sho = '\:\s*(\d\d\d\d\d)\s*\d\d\.\d\d\.\d\d'
+
+    shoHelper = re.findall(pattern1_sho, email_msg.as_string())
+    sho = shoHelper[0] if len(shoHelper) > 0 else "-1"
+
+    return sho
+
+
+def getShoAmilut_Notice(email_msg):
+    pattern1_amilut = '\:\s*(\d\d\d\d\d\d\d\d\d)\s*'
+    pattern1_sho = '\:\s*\:\s*(\d\d\d\d\d)\s*'
+
+    shoHelper = re.findall(pattern1_sho, email_msg.as_string())
+    sho = shoHelper[0] if len(shoHelper) > 0 else "-1"
+
+    amilutHelper = re.findall(pattern1_amilut, email_msg.as_string())
+    amilut = amilutHelper[0] if len(amilutHelper) > 0 else "-1"
+
+    return sho, amilut
+
+
+def Pre_MAIL(email_msg, headers):
+    sho = getSho_Pre(email_msg)
+    return sho
+
+
+def NOTICE_MAIL(email_msg, headers):
+
+    sho, amilut = getShoAmilut_Notice(email_msg)
+    return sho, amilut
+
+
+def getAction_Part2(email_msg, headers, classifiedMaiL):
+    action = None
+    if classifiedMaiL['action'][1]:  # classifiedMaiL['action'] = (number, Pre, Notice)
+        action = Pre_MAIL(email_msg, headers)
+    elif classifiedMaiL['action'][2]:
+        action = NOTICE_MAIL(email_msg, headers)
+
+    return action
+
+
+def checkIfDrisha(email_msg):
+    pattern1_amir = 'amir@aviram'
+
+    amirHelper = re.findall(pattern1_amir, email_msg.as_string())
+    amir = amirHelper[0] if len(amirHelper) > 0 else "-1"
+
+    return amir
+
+
+def Drisha_Mail(email_msg):
+
+    pattern1_amilut = '\:\s*(\d\d\d\d\d\d\d\d\d)\s*.*Link'
+
+    amilutHelper = re.findall(pattern1_amilut, email_msg.as_string())
+    amilut = amilutHelper[0] if len(amilutHelper) > 0 else "-1"
+
+    _, link = checkForLink(email_msg)
+
+    return amilut, link
+
+
+def Hatara_Mail(email_msg):
+    email_msgHelper = walkNow(email_msg)
+
+    pattern1_amilut = 'Subject.*(\d\d\d\d\d\d\d\d\d)'
+
+    amilutHelper = re.findall(pattern1_amilut, email_msgHelper)
+    amilut = amilutHelper[0] if len(amilutHelper) > 0 else "-1"
+
+    _, link = checkForLink(email_msg)
+    # myPrinter('Hatara_Mail', 'blue')
+    # myPrinter(amilut, 'blue')
+
+    return amilut, link
+
+
+def checkIfHatara(email_msg, headers):
+    pattern1_hatara = 'www\.aviram\.co\.il'
+
+    ataraHelper = re.findall(pattern1_hatara, email_msg.as_string())
+    hatara = ataraHelper[0] if len(ataraHelper) > 0 else "-1"
+
+    return hatara
+
+
+def getAction_Part3(email_msg, headers, classifiedMaiL):
+
+    drisha = checkIfDrisha(email_msg)
+    hatara = checkIfHatara(email_msg, headers)
+
+    action = None
+    if drisha != '-1' and hatara == '-1':
+        action = Drisha_Mail(email_msg)
+        return action, 'DRISHA'
+
+    if drisha == '-1' and hatara != '-1':
+        action = Hatara_Mail(email_msg)
+        return action, 'HATARA'
+
+    return None
+
+
 def getAction(email_msg, email_msg2_forHeaders, classifiedMaiL):
     headers = getHeaders(email_msg2_forHeaders)
     action = None
@@ -262,7 +382,11 @@ def getAction(email_msg, email_msg2_forHeaders, classifiedMaiL):
         helper = getAction_Part1(email_msg, headers, classifiedMaiL)
         action = {'details': helper, 'classifiedMaiL': classifiedMaiL}
     elif classifiedMaiL['part'] == 'PART2':
-        print("PART2")
+        helper = getAction_Part2(email_msg, headers, classifiedMaiL)
+        action = {'details': helper, 'classifiedMaiL': classifiedMaiL}
+    elif classifiedMaiL['part'] == 'PART3':
+        helper = getAction_Part3(email_msg, headers, classifiedMaiL)
+        action = {'details': helper, 'classifiedMaiL': classifiedMaiL}
     return action
 
 
@@ -309,6 +433,7 @@ def GoRefresh():
     con = Login()
     con.select('GRX')
 
+    transferHelper = []
     actions = []
     unKnownActions = []
 
@@ -321,39 +446,44 @@ def GoRefresh():
         # resp, data = con.fetch(mailID, "(UID)")
 
         # if data[0]:
-            # msg_uid = parse_uid(data[0].decode('utf-8'))
+        # msg_uid = parse_uid(data[0].decode('utf-8'))
 
-            result, email_data = con.fetch(mailID, '(RFC822)')
+        result, email_data = con.fetch(mailID, '(RFC822)')
 
-            if result == 'OK':
+        if result == 'OK':
 
-                raw = email.message_from_bytes(email_data[0][1])
-                email_msg = get_body(raw)  # good for all kinds
-                # print(email_msg)
+            raw = email.message_from_bytes(email_data[0][1])
+            email_msg = get_body(raw)  # good for all kinds
+            # print(email_msg)
 
-                raw_email_Helper = email_data[0][1].decode('utf-8')
-                email_msg2_forHeaders = email.message_from_string(raw_email_Helper)  # good for fetching headers
-                # print(email_msg2_forHeaders['subject'])
+            raw_email_Helper = email_data[0][1].decode('utf-8')
+            email_msg2_forHeaders = email.message_from_string(raw_email_Helper)  # good for fetching headers
+            # print(email_msg2_forHeaders['subject'])
 
-                classifiedMaiL = classifyMaiL(email_msg,
-                                              email_msg2_forHeaders)  # (classified(bool), action, email_msg, headers)
+            classifiedMaiL = classifyMaiL(email_msg,
+                                          email_msg2_forHeaders)  # (classified(bool), action, email_msg, headers)
 
-                if classifiedMaiL is None:
-                    print("classifiedMaiL is None.. this is email_msg -> ", email_msg)
+            if classifiedMaiL is None:
+                print("classifiedMaiL is None.. this is email_msg -> ")
+            else:
+
+                action = getAction(email_msg, email_msg2_forHeaders, classifiedMaiL)
+
+                if action is not None:
+                    print("action is -> ", action)
+                    actions.append(action)
+                    transferHelper.append({'action': action, 'email': email_data})
                 else:
-
-                    action = getAction(email_msg, email_msg2_forHeaders, classifiedMaiL)
-
-                    if action is not None:
-                        print("action is -> ", action)
-                        actions.append(action)
-                    else:
-                        helper = {'classifiedMaiL': classifiedMaiL, 'email': email_msg.as_string()}
-                        unKnownActions.append(helper)
+                    helper = {'classifiedMaiL': classifiedMaiL, 'email': email_msg.as_string()}
+                    unKnownActions.append(helper)
 
     copyGrxFolder(con)
     copy_MSG = 'done copy'
     myPrinter(copy_MSG, 'blue')
+
+
+
+    # transferTos3()
 
     emptyGrxFolder(con)
     copy_MSG = 'done delete'
@@ -382,3 +512,4 @@ def walkNow(email_msg):
 def myPrinter(msg, color):
     message = colored(msg, color)
     print(message)
+

@@ -1,11 +1,13 @@
 import email
 import imaplib
 from flask import Flask, request, jsonify, make_response
-from utils import login, goRefresh
+from utils import login, goRefresh, s3_transfer
 from termcolor import colored
 
 app = Flask(__name__)
 
+
+print(s3_transfer.bucketExist())
 #
 # def print_hi(name):
 #     # Use a breakpoint in the code line below to debug your script.
@@ -23,8 +25,20 @@ def newMails():
     con.close()
     if data == [b'']:
         return "False"
-    print("there are new mails -> ", data)
+    print("there are new masils -> ", data)
     return 'True'
+
+
+@app.route('/api/v1/saveMails', methods=['POST'])
+def saveMails():
+    print("entered saveMails")
+    s3_transfer.transfer()
+    response = make_response(
+        'sababa',
+        200,
+    )
+    response.headers["Content-Type"] = "application/json"
+    return response
 
 
 @app.route('/api/v1/refresh')
