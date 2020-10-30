@@ -8,9 +8,7 @@ from utils import login
 BASE_NAME = 'msg_no_'
 BASE_DIR = 'C:\\Users\\user\\Desktop\\new'
 
-s3 = boto3.resource('s3',
-                    aws_access_key_id="AKIATBFOUJ25FSSF4BGG",
-                    aws_secret_access_key="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")
+s3 = boto3.resource('s3')
 
 
 #
@@ -35,9 +33,7 @@ def writeTofile(mailDir, partOfName, msg):
     # fw.write(msg)
     # fw.close()
 
-    s3 = boto3.resource('s3',
-                            aws_access_key_id="AKIATBFOUJ25FSSF4BGG",
-                            aws_secret_access_key="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")
+    s3 = boto3.resource('s3')
 
     object = s3.Object('mailsclientproccessed2', 'Garox/opn/sho1/filename.eml')
     object.put(Body=msg)
