@@ -5,8 +5,8 @@ import imaplib
 def Login():
 
     host = 'imap.gmail.com'
-    username = 'autologisr@gmail.com'
-    password = 'NANAbanana123'
+    username = ''
+    password = ''
 
     con = imaplib.IMAP4_SSL(host)
     x = con.login(username, password)
